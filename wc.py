@@ -9,10 +9,12 @@ from matplotlib.figure import Figure
 import numpy as np
 import os
 import seaborn as sns
+from queue import PriorityQueue
 
 class Search():
     def __init__(self, field, mode = "dfs") -> None:
-        self.StartDFS(field, mode)
+        self.itemcount = 0
+        self.StartSearch(field, mode)
 
     def CheckNeighbours(self, field, visited, c, x, y):
         '''
@@ -71,31 +73,24 @@ class Search():
         field = np.array(parent, copy=True) 
         maxheight = field.shape[0] -1
         maxwidth = field.shape[1] -1
-        # print(field)
+
         # Set value of coordinates to 0 (empty):
         for (y,x) in coordinates:
             field[y,x] = 0
-        # print(field)
 
         # 1. Fall down:
         xcors = set(list(zip(*coordinates))[1])
         for x in xcors:
-            # print("x", x)
             if sum(field[:,x]) != 0:
                 valueList = []
                 for y in range(maxheight,-1,-1):
-                    # print("y",y)
                     if field[y,x] != 0:
-                        # print("field",field[y,x])
                         valueList.append(field[y,x])
                 amtzeros = field.shape[0] - len(valueList)
-                # print(amtzeros)
                 valueList = (amtzeros*[0])+valueList[::-1] # reverse valuelist.
-                # print(valueList)
                 field[:,x] = valueList
-        # print("fieldafter1",field)
 
-        # 2. Shift to right:
+        # 2. Shift empty columns to right:
         empty = [0]*(field.shape[0])
         notEmpty = []
         
@@ -103,18 +98,12 @@ class Search():
             if field[field.shape[0]-1,x] != 0:
                 notEmpty.append(x)
 
-        # print(notEmpty)
-        # print("field.shape[1]",field.shape[1])
-        # print("len(notEmpty)",len(notEmpty))
-        # print("-",field.shape[1]-len(notEmpty))
         for x, xne in zip(range(maxwidth,maxwidth-len(notEmpty),-1),notEmpty):
-            # print(xne,x)
             field[:,x] = field[:,xne]
         
         for x in range(maxwidth-len(notEmpty),-1,-1):
-            # print(x)
             field[:,x] = empty
-        # print("finalfield", field)
+            
         return field
 
     def DFS(self, field, sum, moves, states):
@@ -143,10 +132,55 @@ class Search():
                         newsum = sum - (field[x,y]*len(nb))
                         newmoves = moves + [nb]
                         newstates = states + [newfield]
-                        foundsolution, allmoves, allstates = self.SearchMove(newfield, newsum, newmoves, newstates) 
+                        foundsolution, allmoves, allstates = self.DFS(newfield, newsum, newmoves, newstates) 
                         if foundsolution:
                             return True, allmoves, allstates
         
+        # When there are no moves left on the field but solution has not been found: 
+        return False, [], []
+    
+    def Astar(self, field, moves, states, q):
+        '''
+        Solution to game is recursively searched using A* Search. 
+        Returns bool whether a solution is found, and list of list of coordinates in order that should be clicked to reach solution. 
+        '''
+
+        # BASE CASE:
+        # Game is solved when field only has zeros
+        if np.count_nonzero(field) == 0:
+            # Return list of list of coordinates you have to click in order to solve the game
+            return True, moves, states
+        
+        # RECURSION:
+        height = field.shape[0]
+        width = field.shape[1]
+        visited = np.full((height, width), False) # initialise 'empty' array
+
+        # Generate all possible children of current field and add to priority queue:
+        for y in range(0,width):
+            for x in range(0,height):
+                if field[x,y] > 0:
+                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
+                    if len(nb) > 1: # Cell has island of >= 2 cells
+
+                        # Generate new child field with "popped bubbles":
+                        newfield = self.UpdateField(field,nb)
+                        newmoves = moves + [nb]
+                        newstates = states + [newfield]
+
+                        # Add to priority queue
+                        count = int(np.count_nonzero(newfield > 0))
+                        q.put((count, self.itemcount, newfield, newmoves, newstates))
+                        self.itemcount += 1
+             
+        if not q.empty():
+            # Call search method on first element in priority queue:
+            (_, _, newfield, newmoves, newstates) = q.get()
+            foundsolution, allmoves, allstates = self.Astar(newfield, newmoves, newstates, q) 
+            
+            if foundsolution:
+                return True, allmoves, allstates
+
         # When there are no moves left on the field but solution has not been found: 
         return False, [], []
 
@@ -158,8 +192,10 @@ class Search():
 
             for (x,y) in move:
                 grid[x,y] = 1
-            print("State "+str(i+1)+":")
-            print(state)
+
+            if states != []:
+                print("State "+str(i+1)+":")
+                print(state)
 
             print("Move "+str(i+1)+":")
             print(grid)
@@ -168,16 +204,18 @@ class Search():
         print("Starting search...")
         if mode == "dfs":
             foundsolution, moves, states = self.DFS(field, np.sum(field), [], [field])
+        if mode == "astar":
+            q = PriorityQueue()
+            foundsolution, moves, states = self.Astar(field, [], [field], q)
+
         if foundsolution:
-            print(moves)
-            #grid = np.zeros((fieldHeight,fieldWidth))
-            self.PrintMoves(field,moves,states)
+            self.PrintMoves(field, moves, states)
         else:
             print("Solution not found.")
 
 
 
-class Field():
+class GetField():
     def __init__(self):
         self.templates = ["1.png", "2.png", "3.png", "4.png"] # 1: shoe, 2: shirt, 3: bag, 4: jeans
         self.thresholds = {"1": 0.99, "2": 0.99, "3": 0.99, "4": 0.99}
@@ -205,7 +243,6 @@ class Field():
             cv.rectangle(img_rgb, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
             locations.append((templatepath[0], pt[0], pt[1]))
         cv.imwrite("res"+templatepath[0]+".png",img_rgb)
-        #print(locations)
         return locations
 
     def GetMostRecentImage(self, dirpath = "/Users/Y/Desktop/", valid_extensions = ["png"]):
@@ -226,10 +263,9 @@ class Field():
         for template in self.templates: 
             locations = self.TemplateMatching(self.GetMostRecentImage(), template)
             for (c, x, y) in locations:
-                xx = int(x // (self.imageWidth/self.fieldWidth))
-                yy = int(y // (self.imageHeight/self.fieldHeight))
-                field[yy,xx] = c
-            #print(field)
+                xfield = int(x // (self.imageWidth/self.fieldWidth))
+                yfield = int(y // (self.imageHeight/self.fieldHeight))
+                field[yfield,xfield] = c
         print("Field:")
         print(field)
         return field
@@ -242,10 +278,19 @@ slay = np.array([
     [4,4,4,4,4,1,1,1,1],
     [1,2,2,2,4,4,4,4,4]
 ])
-def Solve():
-    field = Field()
-    Search(field.values)
-Solve()
+
+
+def Solve(mode = "dfs"):
+    field = GetField()
+    Search(field.values, mode)
+
+# Run:
+Solve("astar")
+
+
+
+
+
 """ 
 i1 = np.array([[1,2,2],[2,1,1],[2,2,1]], np.int8)
 i2 = np.array([[1,2,3],[4,5,6]], np.int8)
@@ -256,4 +301,29 @@ updatecheck = np.array([[1,99,1,1],[1,99,99,1],[1,99,99,1]])
 
 slay = np.array([[1,4,1,1],[1,4,4,1],[1,4,1,1],[1,4,4,1],[1,4,4,1]])
 cors = [(0,1),(1,1),(1,2),(2,1),(3,1),(3,2),(4,1),(4,2)] """
+
+""" #%%
+import numpy as np 
+slay = np.array([
+    [1,1,1,1,1,1,1,1,1],
+    [2,1,1,2,2,2,2,2,2],
+    [1,3,3,3,3,3,3,3,3],
+    [1,2,2,2,2,2,3,3,3],
+    [4,4,4,4,4,1,1,1,1],
+    [1,2,2,2,4,4,4,4,4]
+])
+i3 = np.array([[0,0],[0,0]], np.int8)
+
+np.count_nonzero(slay > 2)
+# %%
+from queue import PriorityQueue
+
+q = PriorityQueue()
+q.put((1, "hello", "test"))
+
+(item1, item2, item3) = q.get()
+print(item3)
+print(q.qsize())
+# %%
+ """
 
