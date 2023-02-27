@@ -1,14 +1,7 @@
 
 import cv2 as cv
-import matplotlib.pyplot as plt
-from IPython import display
-from IPython.display import HTML
-from matplotlib.animation import FuncAnimation
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
 import numpy as np
 import os
-import seaborn as sns
 from queue import PriorityQueue
 import time
 
@@ -203,14 +196,17 @@ class Search():
         return False, [], []
 
     def PrintMoves(self, field, moves, states, printStates=False):
+        
         grid = np.zeros((field.shape[0],field.shape[1]))
         for i, (move, state) in enumerate(zip(moves,states)):
             grid = np.zeros((field.shape[0],field.shape[1]))
             for (x,y) in move:
                 grid[x,y] = 1
-            if not printStates: 
+            
+            if printStates: 
                 print("State "+str(i+1)+":")
                 print(state)
+
             print("Move "+str(i+1)+":")
             print(grid)
 
@@ -223,7 +219,7 @@ class Search():
             foundsolution, moves, states = self.Astar(field, [], [field], q)
 
         if foundsolution:
-            self.PrintMoves(field, moves, states)
+            self.PrintMoves(field, moves, states, True)
         else:
             print("Solution not found.")
 
