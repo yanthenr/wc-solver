@@ -146,12 +146,12 @@ class Search():
         '''
         height = field.shape[0]
         width = field.shape[1]
-        visited = np.full((height, width), False) # initialise 'empty' array
+        visitedNeighbours = np.full((height, width), False) # initialise 'empty' array
 
         for y in range(0,width):
             for x in range(0,height):
                 if field[x,y] > 0:
-                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
+                    nb = self.CheckNeighbours(field,visitedNeighbours,field[x,y],x,y)
                     if len(nb) > 1: # Cell has island of >= 2 cells
 
                         # Generate new child field with "popped bubbles":
@@ -188,7 +188,6 @@ class Search():
         visitedStates = {tuple(map(tuple, field)): True} 
 
         while not q.empty():
-            print(q.qsize())
             # Get first element of priority queue:
             (currentcount, _, currentfield, currentmoves, currentstates) = q.get()
 
