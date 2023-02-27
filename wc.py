@@ -10,6 +10,7 @@ import numpy as np
 import os
 import seaborn as sns
 from queue import PriorityQueue
+import time
 
 class Search():
     def __init__(self, field, mode = "dfs") -> None:
@@ -127,21 +128,21 @@ class Search():
             for x in range(0,height):
                 if field[x,y] > 0:
                     nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
-                    if len(nb) > 1: # Cell has island of > 2 cells
+                    if len(nb) > 1: # Cell has island of >= 2 cells: "poppable"
                         newfield = self.UpdateField(field,nb)
-                        newsum = sum - (field[x,y]*len(nb))
-                        newmoves = moves + [nb]
-                        newstates = states + [newfield]
-                        foundsolution, allmoves, allstates = self.DFS(newfield, newsum, newmoves, newstates) 
+                        #newsum = sum - (field[x,y]*len(nb))
+                        #newmoves = moves + [nb]
+                        #newstates = states + [newfield]
+                        foundsolution, allmoves, allstates = self.DFS(newfield, sum - (field[x,y]*len(nb)), moves + [nb], states + [newfield]) 
                         if foundsolution:
                             return True, allmoves, allstates
         
         # When there are no moves left on the field but solution has not been found: 
         return False, [], []
     
-    def GenerateChildren(self, field, moves, states, q):
+    def GenerateChildrenAstar(self, field, moves, states, q, visitedStates):
         '''
-        Returns all possible children of current node (field) and puts them in q
+        Returns all possible children of current node (field) and puts them in q when field configuration has not been in q yet
         '''
         height = field.shape[0]
         width = field.shape[1]
@@ -155,15 +156,21 @@ class Search():
 
                         # Generate new child field with "popped bubbles":
                         newfield = self.UpdateField(field,nb)
-                        newmoves = moves + [nb]
-                        newstates = states + [newfield]
 
-                        # Add to priority queue
-                        count = int(np.count_nonzero(newfield > 0))
-                        q.put((count, self.itemcount, newfield, newmoves, newstates))
-                        self.itemcount += 1
+                        # Check if new field (tuple form) has not been visited:
+                        if tuple(map(tuple, newfield)) not in visitedStates:
+                            
+                            # Add to priority queue
+                            newmoves = moves + [nb]
+                            newstates = states + [newfield]
+                            count = int(np.count_nonzero(newfield > 0))
+                            q.put((count, self.itemcount, newfield, newmoves, newstates))
+                            self.itemcount += 1
 
-        return q
+                            # Add field configuration to visited states:
+                            visitedStates[tuple(map(tuple, newfield))] = True
+
+        return q, visitedStates
 
 
     def Astar(self, field, moves, states, q):# iterative
@@ -172,88 +179,26 @@ class Search():
         Returns bool whether a solution is found, and list of list of coordinates in order that should be clicked to reach solution. 
         '''
 
-        # BASE CASE:
-        # Game is solved when field only has zeros
-        if np.count_nonzero(field) == 0:
-            # Return list of list of coordinates you have to click in order to solve the game
-            return True, moves, states
+        # Enter starting state in priority queue:
+        moves = []
+        states = [field]
+        q.put((np.count_nonzero(field > 0), self.itemcount, field, moves, states))
+
+        # Keep track of visited states - field has to be converted to tuple in order to be hashable
+        visitedStates = {tuple(map(tuple, field)): True} 
+
+        while not q.empty():
+            print(q.qsize())
+            # Get first element of priority queue:
+            (currentcount, _, currentfield, currentmoves, currentstates) = q.get()
+
+            # If field is empty: game is solved:
+            if currentcount == 0:
+                return True, currentmoves, currentstates
+
+            # Generate children of current node and add to queue:
+            q, visitedStates = self.GenerateChildrenAstar(currentfield, currentmoves, currentstates, q, visitedStates)
         
-        # RECURSION:
-        height = field.shape[0]
-        width = field.shape[1]
-        visited = np.full((height, width), False) # initialise 'empty' array
-
-        # Generate all possible children of current field and add to priority queue:
-        for y in range(0,width):
-            for x in range(0,height):
-                if field[x,y] > 0:
-                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
-                    if len(nb) > 1: # Cell has island of >= 2 cells
-
-                        # Generate new child field with "popped bubbles":
-                        newfield = self.UpdateField(field,nb)
-                        newmoves = moves + [nb]
-                        newstates = states + [newfield]
-
-                        # Add to priority queue
-                        count = int(np.count_nonzero(newfield > 0))
-                        q.put((count, self.itemcount, newfield, newmoves, newstates))
-                        self.itemcount += 1
-             
-        if not q.empty():
-            # Call search method on first element in priority queue:
-            (_, _, newfield, newmoves, newstates) = q.get()
-            foundsolution, allmoves, allstates = self.Astar(newfield, newmoves, newstates, q) 
-            
-            if foundsolution:
-                return True, allmoves, allstates
-
-        # When there are no moves left on the field but solution has not been found: 
-        return False, [], []
-
-    def Astar(self, field, moves, states, q):
-        '''
-        Solution to game is recursively searched using A* Search. 
-        Returns bool whether a solution is found, and list of list of coordinates in order that should be clicked to reach solution. 
-        '''
-
-        # BASE CASE:
-        # Game is solved when field only has zeros
-        if np.count_nonzero(field) == 0:
-            # Return list of list of coordinates you have to click in order to solve the game
-            return True, moves, states
-        
-        # RECURSION:
-        height = field.shape[0]
-        width = field.shape[1]
-        visited = np.full((height, width), False) # initialise 'empty' array
-
-        # Generate all possible children of current field and add to priority queue:
-        for y in range(0,width):
-            for x in range(0,height):
-                if field[x,y] > 0:
-                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
-                    if len(nb) > 1: # Cell has island of >= 2 cells
-
-                        # Generate new child field with "popped bubbles":
-                        newfield = self.UpdateField(field,nb)
-                        newmoves = moves + [nb]
-                        newstates = states + [newfield]
-
-                        # Add to priority queue
-                        count = int(np.count_nonzero(newfield > 0))
-                        q.put((count, self.itemcount, newfield, newmoves, newstates))
-                        self.itemcount += 1
-             
-        if not q.empty():
-            # Call search method on first element in priority queue:
-            (_, _, newfield, newmoves, newstates) = q.get()
-            foundsolution, allmoves, allstates = self.Astar(newfield, newmoves, newstates, q) 
-            
-            if foundsolution:
-                return True, allmoves, allstates
-
-        # When there are no moves left on the field but solution has not been found: 
         return False, [], []
 
     def PrintMoves(self, field, moves, states):
@@ -265,7 +210,7 @@ class Search():
             for (x,y) in move:
                 grid[x,y] = 1
 
-            if states != []:
+            if states == []: # edit !=
                 print("State "+str(i+1)+":")
                 print(state)
 
@@ -301,6 +246,7 @@ class GetField():
     def TemplateMatching(self, imgpath, templatepath):
         locations = []
         img_rgb = cv.imread(imgpath)
+
         if not self.imageDimCalculated:
             self.imageWidth = img_rgb.shape[1]
             self.imageHeight = img_rgb.shape[0]
@@ -328,15 +274,17 @@ class GetField():
             f.rsplit('.',1)[-1] in valid_extensions and os.path.isfile(f)]
         if not valid_files:
             raise ValueError("No valid images in %s" % dirpath)
-        return max(valid_files, key=os.path.getmtime) 
+        img = max(valid_files, key=os.path.getmtime)
+        print("Getting img from "+str(img))
+        return img
 
     def ConvertToArray(self):
         field = np.zeros((self.fieldHeight, self.fieldWidth))
         for template in self.templates: 
             locations = self.TemplateMatching(self.GetMostRecentImage(), template)
             for (c, x, y) in locations:
-                xfield = int(x // (self.imageWidth/self.fieldWidth))
-                yfield = int(y // (self.imageHeight/self.fieldHeight))
+                xfield = int(x // (self.imageWidth / self.fieldWidth))
+                yfield = int(y // (self.imageHeight / self.fieldHeight))
                 field[yfield,xfield] = c
         print("Field:")
         print(field)
@@ -353,49 +301,11 @@ slay = np.array([
 
 
 def Solve(mode = "dfs"):
+    startTime = time.perf_counter()
     field = GetField()
     Search(field.values, mode)
+    endTime = time.perf_counter()
+    print(f"Time elapsed: {endTime-startTime:0.4f} seconds")
 
 # Run:
 Solve("astar")
-
-
-
-
-
-""" 
-i1 = np.array([[1,2,2],[2,1,1],[2,2,1]], np.int8)
-i2 = np.array([[1,2,3],[4,5,6]], np.int8)
-i3 = np.array([[1,1],[1,1]], np.int8)
-i4 = np.array([[2,1],[1,1]], np.int8) # sum = 5
-i5 = np.array([[2,2,2],[2,1,2],[1,2,2]])
-updatecheck = np.array([[1,99,1,1],[1,99,99,1],[1,99,99,1]])
-
-slay = np.array([[1,4,1,1],[1,4,4,1],[1,4,1,1],[1,4,4,1],[1,4,4,1]])
-cors = [(0,1),(1,1),(1,2),(2,1),(3,1),(3,2),(4,1),(4,2)] """
-
-""" #%%
-import numpy as np 
-slay = np.array([
-    [1,1,1,1,1,1,1,1,1],
-    [2,1,1,2,2,2,2,2,2],
-    [1,3,3,3,3,3,3,3,3],
-    [1,2,2,2,2,2,3,3,3],
-    [4,4,4,4,4,1,1,1,1],
-    [1,2,2,2,4,4,4,4,4]
-])
-i3 = np.array([[0,0],[0,0]], np.int8)
-
-np.count_nonzero(slay > 2)
-# %%
-from queue import PriorityQueue
-
-q = PriorityQueue()
-q.put((1, "hello", "test"))
-
-(item1, item2, item3) = q.get()
-print(item3)
-print(q.qsize())
-# %%
- """
-
