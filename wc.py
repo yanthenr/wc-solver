@@ -139,6 +139,78 @@ class Search():
         # When there are no moves left on the field but solution has not been found: 
         return False, [], []
     
+    def GenerateChildren(self, field, moves, states, q):
+        '''
+        Returns all possible children of current node (field) and puts them in q
+        '''
+        height = field.shape[0]
+        width = field.shape[1]
+        visited = np.full((height, width), False) # initialise 'empty' array
+
+        for y in range(0,width):
+            for x in range(0,height):
+                if field[x,y] > 0:
+                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
+                    if len(nb) > 1: # Cell has island of >= 2 cells
+
+                        # Generate new child field with "popped bubbles":
+                        newfield = self.UpdateField(field,nb)
+                        newmoves = moves + [nb]
+                        newstates = states + [newfield]
+
+                        # Add to priority queue
+                        count = int(np.count_nonzero(newfield > 0))
+                        q.put((count, self.itemcount, newfield, newmoves, newstates))
+                        self.itemcount += 1
+
+        return q
+
+
+    def Astar(self, field, moves, states, q):# iterative
+        '''
+        Solution to game is iteratively searched using A* Search. 
+        Returns bool whether a solution is found, and list of list of coordinates in order that should be clicked to reach solution. 
+        '''
+
+        # BASE CASE:
+        # Game is solved when field only has zeros
+        if np.count_nonzero(field) == 0:
+            # Return list of list of coordinates you have to click in order to solve the game
+            return True, moves, states
+        
+        # RECURSION:
+        height = field.shape[0]
+        width = field.shape[1]
+        visited = np.full((height, width), False) # initialise 'empty' array
+
+        # Generate all possible children of current field and add to priority queue:
+        for y in range(0,width):
+            for x in range(0,height):
+                if field[x,y] > 0:
+                    nb = self.CheckNeighbours(field,visited,field[x,y],x,y)
+                    if len(nb) > 1: # Cell has island of >= 2 cells
+
+                        # Generate new child field with "popped bubbles":
+                        newfield = self.UpdateField(field,nb)
+                        newmoves = moves + [nb]
+                        newstates = states + [newfield]
+
+                        # Add to priority queue
+                        count = int(np.count_nonzero(newfield > 0))
+                        q.put((count, self.itemcount, newfield, newmoves, newstates))
+                        self.itemcount += 1
+             
+        if not q.empty():
+            # Call search method on first element in priority queue:
+            (_, _, newfield, newmoves, newstates) = q.get()
+            foundsolution, allmoves, allstates = self.Astar(newfield, newmoves, newstates, q) 
+            
+            if foundsolution:
+                return True, allmoves, allstates
+
+        # When there are no moves left on the field but solution has not been found: 
+        return False, [], []
+
     def Astar(self, field, moves, states, q):
         '''
         Solution to game is recursively searched using A* Search. 
